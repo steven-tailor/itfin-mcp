@@ -92,6 +92,7 @@ export type DayStatus = "open" | "closed" | "future";
 
 interface RawReopenRequest {
   Id: number;
+  RequestType?: string;
   DateFrom: string;
   DateTo: string;
   Status: string;
@@ -244,7 +245,9 @@ export function createItfinServer(deps: ServerDeps): McpServer {
   }
 
   async function reopenRequests(): Promise<RawReopenRequest[]> {
-    return itfin.get<RawReopenRequest[]>("/v1/requests/my", { "filter[requestType]": "OpenReporting", page: 1, size: 50 });
+    const requests = await itfin.get<RawReopenRequest[]>("/v1/requests/my", { "filter[requestType]": "OpenReporting", page: 1, size: 50 });
+    // Also filtered here, so itfin_cancel_reopen_request can't reach a leave request if ITFin ignores the filter.
+    return requests.filter((r) => (r.RequestType ?? "OpenReporting") === "OpenReporting");
   }
 
   async function reopenRequestsCovering(date: string) {
@@ -495,6 +498,29 @@ export function createItfinServer(deps: ServerDeps): McpServer {
           throw new ToolError("VALIDATION", "Reopen requests are disabled in this ITFin workspace.");
         }
         return fileReopenRequest({ from: args.from, to: args.to, reason: args.reason });
+      }),
+  );
+
+  server.registerTool(
+    "itfin_cancel_reopen_request",
+    {
+      title: "Cancel a reopen request",
+      description:
+        "Cancels (deletes) one of the user's reopen requests by id (from itfin_list_reopen_requests). Only call this when the user asked to cancel that request. " +
+        "Works for pending requests; whether an approved one can still be cancelled is up to ITFin.",
+      inputSchema: { id: z.number().int() },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
+    },
+    ({ id }) =>
+      handle(async () => {
+        // Look the id up among the user's reopen requests, so this tool can't cancel other kinds of requests.
+        const request = (await reopenRequests()).find((r) => r.Id === id);
+        if (!request) throw new ToolError("NOT_FOUND", `No reopen request ${id} among the user's recent reopen requests.`);
+        if ([...CLOSED_REQUEST_STATUSES, "Declined"].includes(request.Status)) {
+          throw new ToolError("VALIDATION", `Reopen request ${id} is already ${request.Status}.`, { request: toReopenRequest(request) });
+        }
+        await itfin.request("DELETE", `/v1/requests/${id}`);
+        return { cancelled: id, request: toReopenRequest(request) };
       }),
   );
 
