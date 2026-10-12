@@ -78,7 +78,7 @@ In CLI mode each tool is a command without the `itfin_` prefix: `itfin_get_entri
 | `itfin_get_entries` | Your time entries, and which days are open, closed or in the future |
 | `itfin_create_entry` / `itfin_update_entry` / `itfin_delete_entry` | Change time entries |
 | `itfin_get_workspace_settings` | Minimum comment length; whether reopen requests are on |
-| `itfin_request_reopen` / `itfin_list_reopen_requests` | Ask a manager to reopen closed days; see your requests |
+| `itfin_request_reopen` / `itfin_list_reopen_requests` / `itfin_cancel_reopen_request` | Ask a manager to reopen closed days; see or cancel your requests |
 | `itfin_list_leave_types` | Leave types and reasons you can use |
 | `itfin_request_leave` | Request full days, or some hours of one day |
 | `itfin_list_leave_requests` / `itfin_cancel_leave_request` | See or cancel your leave requests |
