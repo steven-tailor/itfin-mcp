@@ -54,7 +54,7 @@ OLD_VERSION="$(version)"
 LEGACY=""
 if [[ -d "$DIR/.git" ]]; then
   ORIGIN="$(git -C "$DIR" remote get-url origin 2>/dev/null || true)"
-  [[ "$ORIGIN" =~ ^https://github\.com/(softgem-dev|steven-tailor)/itfin-mcp(\.git)?$ && -z "$(git -C "$DIR" status --porcelain 2>/dev/null)" ]] \
+  [[ "$ORIGIN" =~ ^https://github\.com/steven-tailor/itfin-mcp(\.git)?$ && -z "$(git -C "$DIR" status --porcelain 2>/dev/null)" ]] \
     || fail "$DIR is a git repo other than an itfin-mcp install, or has local changes. Pick another folder with --dir."
   LEGACY=1
   OLD_VERSION="git"
