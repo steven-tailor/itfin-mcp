@@ -26,7 +26,8 @@
     "scripts"
   ],
   "os": [
-    "darwin"
+    "darwin",
+    "linux"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

@@ -7,7 +7,7 @@ import type { Config } from "./config.js";
 import { ToolError } from "./errors.js";
 import { ItfinClient } from "./itfinClient.js";
 import { startBrowserLogin, type LoginSession } from "./login.js";
-import { LaunchdReminderScheduler, type ReminderScheduler } from "./reminders.js";
+import { createReminderScheduler, type ReminderScheduler } from "./reminders.js";
 import { decodeToken } from "./jwt.js";
 import {
   ADDITIONAL_REASONS_SETTING,
@@ -189,7 +189,7 @@ export function createItfinServer(deps: ServerDeps): McpServer {
   }
 
   const itfin = new ItfinClient(config.workspaceUrl, validToken, deps.retryDelayMs ?? 500, markRejected);
-  const reminders = deps.reminders ?? new LaunchdReminderScheduler();
+  const reminders = deps.reminders ?? createReminderScheduler();
   const startLogin =
     deps.startLogin ?? ((maxWaitMs: number) => startBrowserLogin({ workspaceUrl: config.workspaceUrl, browser: config.browser, maxWaitMs }));
   let loginInProgress: Promise<LoginResult> | undefined;
@@ -206,8 +206,16 @@ export function createItfinServer(deps: ServerDeps): McpServer {
     const expiresAt = new Date(claims.exp * 1000);
     await tokenStore.save(token);
     const reminder = await nextReminder(expiresAt, clock.now());
-    if (reminder) await reminders.schedule(reminder, config.workspaceUrl);
-    return { email: claims.Email, expiresAt: expiresAt.toISOString(), nextReminderAt: reminder?.toISOString() };
+    // The token is saved, so a scheduler failure (e.g. no systemd user bus) must not fail the login.
+    let scheduled = reminder;
+    if (reminder) {
+      try {
+        await reminders.schedule(reminder, config.workspaceUrl);
+      } catch {
+        scheduled = undefined;
+      }
+    }
+    return { email: claims.Email, expiresAt: expiresAt.toISOString(), nextReminderAt: scheduled?.toISOString() };
   }
 
   async function getDays(from: string, to: string): Promise<RawDay[]> {
