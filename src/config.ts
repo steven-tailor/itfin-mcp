@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type { GoogleCredentials } from "./googleSignIn.js";
 
 export interface Config {
   /** Workspace address, e.g. https://acme.itfin.io */
@@ -11,6 +12,8 @@ export interface Config {
   workStart: string;
   /** IANA timezone for working time. */
   timezone: string;
+  /** Opt-in automatic Google sign-in. Only from env vars: the password is never written to the config file. */
+  google?: GoogleCredentials;
 }
 
 /** Where the installer keeps the settings, unless ITFIN_CONFIG points elsewhere. */
@@ -46,10 +49,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, file = env.ITFI
   if (!workspaceUrl) throw new Error("No ITFin workspace configured. Run npx itfin-mcp@latest install, or set ITFIN_URL, e.g. https://acme.itfin.io");
   const workStart = value("ITFIN_WORK_START", saved.workStart) ?? "10:00";
   if (!/^\d{1,2}:\d{2}$/.test(workStart)) throw new Error("ITFIN_WORK_START must be HH:mm, e.g. 10:00");
+  const googleEmail = env.ITFIN_GOOGLE_EMAIL?.trim();
+  const googlePassword = env.ITFIN_GOOGLE_PASSWORD || undefined;
+  if (googlePassword && !googleEmail) throw new Error("ITFIN_GOOGLE_PASSWORD needs ITFIN_GOOGLE_EMAIL too.");
   return {
     workspaceUrl,
     browser: value("ITFIN_BROWSER", saved.browser) ?? "chrome",
     workStart,
     timezone: value("ITFIN_TIMEZONE", saved.timezone) ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+    google: googleEmail ? { email: googleEmail, password: googlePassword } : undefined,
   };
 }

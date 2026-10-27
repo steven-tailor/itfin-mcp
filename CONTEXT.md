@@ -25,8 +25,12 @@ The JWT that authorizes API calls. It is issued only when the user logs in and e
 _Avoid_: session, auth, refresh token
 
 **Login**:
-The user signing in to ITFin via Google in a window opened on request from chat. This is the only moment a new ITFin token is issued.
+The user signing in to ITFin via Google in a window opened on request from chat. This is the only moment a new ITFin token is issued. On an unattended install the Google steps can be driven automatically (**Automatic sign-in**); the token still comes from a real Google login.
 _Avoid_: refresh, re-auth
+
+**Automatic sign-in**:
+Opt-in (`ITFIN_GOOGLE_EMAIL`, optionally `ITFIN_GOOGLE_PASSWORD`). While the login window waits, the tool clicks the Google button, picks the account and enters the login and password if Google asks. It never stores the password.
+_Avoid_: auto-login, stored login
 
 **Relogin reminder**:
 A notification asking the user to log in, scheduled for the nearest working time before the ITFin token expires.
