@@ -69,6 +69,17 @@ npx itfin-mcp@latest install --browser brave --work-start 09:00
 | `--timezone` | system | IANA timezone, e.g. `Europe/Kyiv` |
 | `--dir` | `~/.itfin-mcp` | Install folder |
 
+## Unattended login
+
+By default you sign in to Google yourself in the login window. On a container or an always-on machine, set these in the environment of the process that runs `itfin-mcp`, and the window signs in by itself:
+
+| Variable | Does |
+|---|---|
+| `ITFIN_GOOGLE_EMAIL` | Turns it on. Picks this account in Google's chooser, or types it if Google asks |
+| `ITFIN_GOOGLE_PASSWORD` | Typed only if Google asks for a password. Optional if the browser profile is already signed in to Google |
+
+The password is read from the environment only and is never saved. A Google password grants more than ITFin access, so prefer a signed-in profile with only the email set. With 2-step verification, a person finishes the sign-in. See [ADR 0006](docs/adr/0006-optional-automatic-google-sign-in.md).
+
 ## Tools
 
 In CLI mode each tool is a command without the `itfin_` prefix: `itfin_get_entries` is `itfin get-entries`.

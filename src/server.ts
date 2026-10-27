@@ -191,7 +191,7 @@ export function createItfinServer(deps: ServerDeps): McpServer {
   const itfin = new ItfinClient(config.workspaceUrl, validToken, deps.retryDelayMs ?? 500, markRejected);
   const reminders = deps.reminders ?? createReminderScheduler();
   const startLogin =
-    deps.startLogin ?? ((maxWaitMs: number) => startBrowserLogin({ workspaceUrl: config.workspaceUrl, browser: config.browser, maxWaitMs }));
+    deps.startLogin ?? ((maxWaitMs: number) => startBrowserLogin({ workspaceUrl: config.workspaceUrl, browser: config.browser, maxWaitMs, google: config.google }));
   let loginInProgress: Promise<LoginResult> | undefined;
 
   interface LoginResult {

@@ -1,3 +1,5 @@
+_Partly superseded by [0006](0006-optional-automatic-google-sign-in.md): the Google sign-in can be automated, opt-in._
+
 # ITFin token comes only from a human login, with a launchd relogin reminder
 
 ITFin issues a JWT only at Google login, valid exactly 7 days and never refreshed. We don't automate the Google sign-in or store Google credentials. Instead, `itfin_login` opens a window in a user-chosen Chromium-based browser with a dedicated profile, lets the user sign in, watches the `itfin-jwt` cookie ITFin sets after sign-in (the same JWT the API accepts as a bearer token), and stores the token in the macOS Keychain (the Secret Service on Linux). At that moment the server schedules a one-shot launchd job (a systemd user timer on Linux) that shows a notification for the nearest working time before `exp`. The server only runs while Claude runs, so it cannot remind anyone by itself.

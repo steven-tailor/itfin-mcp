@@ -3,6 +3,8 @@ import { existsSync, mkdirSync } from "node:fs";
 import { createServer } from "node:net";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
+import { connectCdp, type CdpPage } from "./cdp.js";
+import { driveGoogleSignIn, type GoogleCredentials } from "./googleSignIn.js";
 
 const MAC_BROWSERS: Record<string, string> = {
   chrome: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -47,9 +49,10 @@ export interface LoginSession {
 /**
  * Opens the workspace in a Chromium-based browser with a dedicated profile and watches, over the
  * DevTools protocol, for the ITFin token cookie that ITFin sets after the user signs in.
- * Nothing is clicked or typed: the user signs in themselves.
+ * The user signs in themselves, unless `google` is set: then the Google sign-in steps are driven
+ * automatically (see googleSignIn.ts). The token still comes only from a real Google login.
  */
-export async function startBrowserLogin(opts: { workspaceUrl: string; browser: string; profileDir?: string; maxWaitMs: number }): Promise<LoginSession> {
+export async function startBrowserLogin(opts: { workspaceUrl: string; browser: string; profileDir?: string; maxWaitMs: number; google?: GoogleCredentials }): Promise<LoginSession> {
   const executable = resolveBrowser(opts.browser);
   if (!existsSync(executable)) throw new Error(`Browser not found: ${executable}. Set ITFIN_BROWSER to ${IS_MAC ? "chrome, edge, brave, arc, chromium" : "chrome, edge, brave, chromium"} or a path.`);
 
@@ -64,6 +67,8 @@ export async function startBrowserLogin(opts: { workspaceUrl: string; browser: s
 
   const token = (async () => {
     const page = await connectToPage(port, opts.maxWaitMs);
+    const autoSignIn = new AbortController();
+    if (opts.google) void driveGoogleSignIn({ port, workspaceUrl: opts.workspaceUrl, creds: opts.google, signal: autoSignIn.signal });
     try {
       await page.send("Network.enable");
       // Drop a token left in the profile so the user really signs in and ITFin issues a fresh one.
@@ -78,17 +83,13 @@ export async function startBrowserLogin(opts: { workspaceUrl: string; browser: s
       }
       throw new Error("Timed out waiting for the ITFin login.");
     } finally {
+      autoSignIn.abort();
       page.close();
       closeBrowser(child, port);
     }
   })();
 
   return { token };
-}
-
-interface CdpPage {
-  send(method: string, params?: Record<string, unknown>): Promise<unknown>;
-  close(): void;
 }
 
 async function connectToPage(port: number, maxWaitMs: number): Promise<CdpPage> {
@@ -106,35 +107,7 @@ async function connectToPage(port: number, maxWaitMs: number): Promise<CdpPage> 
       await sleep(250);
     }
   }
-  const ws = new WebSocket(wsUrl);
-  await new Promise<void>((resolve, reject) => {
-    ws.addEventListener("open", () => resolve(), { once: true });
-    ws.addEventListener("error", () => reject(new Error("Could not connect to the login browser.")), { once: true });
-  });
-  let nextId = 1;
-  const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
-  ws.addEventListener("message", (ev) => {
-    const msg = JSON.parse(String(ev.data)) as { id?: number; result?: unknown; error?: { message: string } };
-    if (msg.id === undefined) return;
-    const p = pending.get(msg.id);
-    pending.delete(msg.id);
-    if (msg.error) p?.reject(new Error(msg.error.message));
-    else p?.resolve(msg.result);
-  });
-  ws.addEventListener("close", () => {
-    for (const p of pending.values()) p.reject(new Error("The login browser was closed."));
-    pending.clear();
-  });
-  return {
-    send(method, params = {}) {
-      const id = nextId++;
-      return new Promise((resolve, reject) => {
-        pending.set(id, { resolve, reject });
-        ws.send(JSON.stringify({ id, method, params }));
-      });
-    },
-    close: () => ws.close(),
-  };
+  return connectCdp(wsUrl);
 }
 
 function closeBrowser(child: ChildProcess, port: number): void {
