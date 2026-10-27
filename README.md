@@ -6,7 +6,9 @@ An unofficial tool. It is not made, endorsed or supported by ITFin.
 
 ## Install (about 2 minutes)
 
-You need macOS, Node.js 22+ and Chrome, Edge, Brave, Arc or Chromium.
+You need macOS or Linux, Node.js 22+ and Chrome, Edge, Brave or Chromium (Arc on macOS only).
+
+On Linux you also need `secret-tool` (Debian/Ubuntu: `sudo apt install libsecret-tools`) with a keyring such as GNOME Keyring. Reminders use `systemd-run` and `notify-send`. Claude Desktop has no Linux build, so use Claude Code or Codex.
 
 1. Run:
    ```bash
@@ -45,7 +47,7 @@ CLI mode installs:
 1. Say **"log in to ITFin"**.
 2. Pick your Google account in the window that opens.
 
-ITFin tokens last 7 days and can't be extended. A macOS notification reminds you at the start of your working day before yours expires.
+ITFin tokens last 7 days and can't be extended. A desktop notification reminds you at the start of your working day before yours expires.
 
 ## Settings
 

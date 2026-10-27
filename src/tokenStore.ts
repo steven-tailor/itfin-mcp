@@ -52,6 +52,49 @@ export class KeychainTokenStore implements TokenStore {
   }
 }
 
+/** A locked keyring makes secret-tool wait for an unlock prompt; give up instead of blocking every tool call. */
+const SECRET_TOOL_TIMEOUT_MS = 15_000;
+
+/** Keeps the ITFin token in the Linux Secret Service (GNOME Keyring, KWallet) through `secret-tool`. */
+export class SecretToolTokenStore implements TokenStore {
+  constructor(
+    private readonly service: string,
+    private readonly account: string,
+  ) {}
+
+  async load(): Promise<StoredToken | undefined> {
+    try {
+      const { stdout } = await run("secret-tool", ["lookup", "service", this.service, "account", this.account], { timeout: SECRET_TOOL_TIMEOUT_MS });
+      return JSON.parse(stdout.trim()) as StoredToken;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async save(token: string, extra: Omit<StoredToken, "token"> = {}): Promise<void> {
+    const value = JSON.stringify({ token, ...extra });
+    // secret-tool reads the secret from stdin, so it never shows up in the process list.
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn("secret-tool", ["store", "--label", `ITFin (${this.account})`, "service", this.service, "account", this.account], { stdio: ["pipe", "ignore", "pipe"], timeout: SECRET_TOOL_TIMEOUT_MS });
+      let stderr = "";
+      child.stderr.on("data", (d) => (stderr += d));
+      child.on("error", reject);
+      child.stdin.on("error", reject); // secret-tool may exit before it reads the secret
+      child.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`Keyring write failed: ${stderr.trim() || code}`))));
+      child.stdin.end(value);
+    });
+  }
+
+  async clear(): Promise<void> {
+    await run("secret-tool", ["clear", "service", this.service, "account", this.account], { timeout: SECRET_TOOL_TIMEOUT_MS }).catch(() => undefined);
+  }
+}
+
+/** The OS keychain: macOS Keychain, or the Secret Service on Linux. */
+export function createTokenStore(service: string, account: string): TokenStore {
+  return process.platform === "darwin" ? new KeychainTokenStore(service, account) : new SecretToolTokenStore(service, account);
+}
+
 function quote(s: string): string {
   return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }

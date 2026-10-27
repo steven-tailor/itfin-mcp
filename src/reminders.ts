@@ -10,7 +10,7 @@ const run = promisify(execFile);
 export interface ReminderScheduler {
   /** Replaces any scheduled relogin reminder for the workspace with one at `at`. */
   schedule(at: Date, workspaceUrl: string): Promise<void>;
-  /** Shows a macOS notification right away. */
+  /** Shows a desktop notification right away. */
   notify(title: string, message: string): Promise<void>;
 }
 
@@ -63,6 +63,37 @@ export class LaunchdReminderScheduler implements ReminderScheduler {
   async notify(title: string, message: string): Promise<void> {
     await run("/bin/sh", ["-c", notificationCommand(title, message)]).catch(() => undefined);
   }
+}
+
+/** One-shot relogin reminders as transient systemd user timers that remove themselves after firing. */
+export class SystemdReminderScheduler implements ReminderScheduler {
+  async schedule(at: Date, workspaceUrl: string): Promise<void> {
+    const slug = createHash("sha1").update(workspaceUrl).digest("hex").slice(0, 10);
+    const unit = `itfin-mcp-relogin-${slug}`;
+
+    // Stop the old timer and its service, and clear failed state, so systemd-run can reuse the unit names.
+    for (const name of [`${unit}.timer`, `${unit}.service`]) {
+      await run("systemctl", ["--user", "stop", name]).catch(() => undefined);
+      await run("systemctl", ["--user", "reset-failed", name]).catch(() => undefined);
+    }
+    if (at.getTime() - Date.now() < 60_000) {
+      await this.notify("ITFin", reminderText(workspaceUrl));
+      return;
+    }
+
+    // UTC, so the time does not depend on which TZ the server process and the systemd manager each see.
+    const when = `${at.toISOString().slice(0, 16).replace("T", " ")}:00 UTC`;
+    await run("systemd-run", ["--user", `--unit=${unit}`, `--on-calendar=${when}`, "--timer-property=AccuracySec=1s", "--collect", "--quiet", "notify-send", "ITFin", reminderText(workspaceUrl)]);
+  }
+
+  async notify(title: string, message: string): Promise<void> {
+    await run("notify-send", [title, message]).catch(() => undefined);
+  }
+}
+
+/** The OS reminder scheduler: launchd on macOS, systemd user timers on Linux. */
+export function createReminderScheduler(): ReminderScheduler {
+  return process.platform === "darwin" ? new LaunchdReminderScheduler() : new SystemdReminderScheduler();
 }
 
 function reminderText(workspaceUrl: string): string {

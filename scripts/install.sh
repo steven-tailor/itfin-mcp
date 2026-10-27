@@ -13,7 +13,9 @@ DIR="${ITFIN_MCP_DIR:-$HOME/.itfin-mcp}"
 # What npm installs. Override it to try a local build: ITFIN_MCP_PACKAGE=./itfin-mcp-0.1.0.tgz
 PACKAGE="${ITFIN_MCP_PACKAGE:-itfin-mcp@latest}"
 CODEX_CONFIG="${CODEX_HOME:-$HOME/.codex}/config.toml"
-DESKTOP_CONFIG="$HOME/Library/Application Support/Claude/claude_desktop_config.json"
+# Claude Desktop only exists for macOS (and Windows), so Linux has no Desktop config.
+DESKTOP_CONFIG=""
+[[ "$(uname)" == "Darwin" ]] && DESKTOP_CONFIG="$HOME/Library/Application Support/Claude/claude_desktop_config.json"
 CLAUDE_SETTINGS="$HOME/.claude/settings.json"
 CLAUDE_SKILL="$HOME/.claude/skills/itfin"
 CODEX_SKILL="$HOME/.agents/skills/itfin"
@@ -41,7 +43,14 @@ fail() { echo "✗ $*" >&2; exit 1; }
 # Read answers from the terminal even when the script itself comes from a pipe.
 ask() { local prompt="$1" default="${2:-}" answer; read -r -p "$prompt${default:+ [$default]}: " answer </dev/tty || true; echo "${answer:-$default}"; }
 
-[[ "$(uname)" == "Darwin" ]] || fail "itfin-mcp needs macOS (Keychain, launchd and notifications)."
+case "$(uname)" in
+  Darwin) ;;
+  Linux)
+    command -v secret-tool >/dev/null || fail "On Linux itfin-mcp stores the token with secret-tool. Install it (Debian/Ubuntu: sudo apt install libsecret-tools; Fedora: sudo dnf install libsecret) and a keyring such as GNOME Keyring."
+    command -v systemd-run >/dev/null || echo "! systemd-run was not found, so the relogin reminder is off."
+    ;;
+  *) fail "itfin-mcp needs macOS or Linux." ;;
+esac
 command -v node >/dev/null || fail "Node.js 22+ is required: https://nodejs.org"
 [[ "$(node -p 'process.versions.node.split(".")[0]')" -ge 22 ]] || fail "Node.js 22+ is required (found $(node -v))."
 command -v npm >/dev/null || fail "npm is required. It comes with Node.js: https://nodejs.org"
@@ -129,6 +138,7 @@ APPS="$(echo $APPS)"
 for pair in $APPS; do
   app="${pair%%=*}" mode="${pair#*=}"
   [[ "$app" =~ ^(claude|codex|desktop)$ ]] || fail "Unknown app: $app. Use claude, codex or desktop."
+  [[ "$app" != desktop || "$(uname)" == "Darwin" ]] || fail "Claude Desktop is not available on Linux."
   [[ "$mode" =~ ^(mcp|cli)$ ]] || fail "Unknown mode for $app: $mode. Use mcp or cli."
   [[ "$pair" != "desktop=cli" ]] || fail "Claude Desktop has no shell, so it can only use MCP mode."
 done
@@ -247,7 +257,7 @@ if [[ -n "$(mode_of codex)" ]]; then
     install_skill "$CODEX_SKILL"
     remove_rules
     if [[ ${#READ_ONLY[@]} -gt 0 ]]; then
-      # Allowed commands run outside the Codex sandbox, which blocks the network and the Keychain.
+      # Allowed commands run outside the Codex sandbox, which blocks the network and the keychain.
       mkdir -p "$(dirname "$CODEX_RULES")"
       { echo "$RULES_MARK: read-only itfin commands. Rewritten on every update."
         for command in "${READ_ONLY[@]}"; do echo "prefix_rule(pattern=[\"itfin\", \"$command\"], decision=\"allow\")"; done
@@ -260,9 +270,19 @@ if [[ -n "$(mode_of codex)" ]]; then
     remove_rules
     codex mcp add itfin "${ENV_ARGS[@]/#-e/--env}" -- "$NODE" "$ENTRY"
     # itfin_login waits up to 3 minutes; Codex gives up on tool calls after 60 seconds by default.
-    sed -i '' '/^\[mcp_servers\.itfin\]$/a\
+    # -i.bak works with both BSD (macOS) and GNU (Linux) sed.
+    sed -i.bak '/^\[mcp_servers\.itfin\]$/a\
 tool_timeout_sec = 240
 ' "$CODEX_CONFIG"
+    rm -f "$CODEX_CONFIG.bak"
+    if [[ "$(uname)" == Linux ]]; then
+      # Codex passes MCP servers only a short list of variables. The browser, secret-tool and
+      # systemctl need the desktop session ones.
+      sed -i.bak '/^\[mcp_servers\.itfin\]$/a\
+env_vars = ["DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "XDG_RUNTIME_DIR", "XDG_DATA_HOME", "DBUS_SESSION_BUS_ADDRESS"]
+' "$CODEX_CONFIG"
+      rm -f "$CODEX_CONFIG.bak"
+    fi
   fi
 fi
 
@@ -295,7 +315,7 @@ for pair in $ALL_APPS; do
   SUMMARY+="${SUMMARY:+, }$name: $(echo "${pair#*=}" | tr '[:lower:]' '[:upper:]')"
 done
 echo "✓ itfin-mcp $NEW_VERSION is installed in $DIR ($SUMMARY)"
-[[ -n "$PATH_HINT" ]] && echo "! $(dirname "$BIN") is not on your PATH. Add it: echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.zshrc"
+[[ -n "$PATH_HINT" ]] && echo "! $(dirname "$BIN") is not on your PATH. Add it: echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.$([[ "$(uname)" == Darwin ]] && echo zshrc || echo bashrc)"
 # Claude Desktop reads its config only at startup. Not quit here: it may be running this script.
 [[ -n "$DESKTOP" ]] && echo "Restart Claude Desktop (Cmd+Q, then open it) to load the server."
 [[ -n "${STALE:-}" ]] && echo "Open sessions lost the ITFin tools: start a new session, or reconnect itfin with /mcp in Claude Code."

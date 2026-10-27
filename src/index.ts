@@ -9,9 +9,9 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { runCli } from "./cli.js";
 import { systemClock } from "./clock.js";
 import { DEFAULT_CONFIG_FILE, loadConfig } from "./config.js";
-import { LaunchdReminderScheduler } from "./reminders.js";
+import { createReminderScheduler } from "./reminders.js";
 import { createItfinServer } from "./server.js";
-import { KeychainTokenStore } from "./tokenStore.js";
+import { createTokenStore } from "./tokenStore.js";
 
 // `npx itfin-mcp install [flags]` runs the installer shipped in the package. `itfin-mcp cli ...` is
 // CLI mode (the installer's `itfin` command runs it). Without arguments this is the MCP server.
@@ -22,11 +22,11 @@ if (process.argv[2] === "install") {
 }
 
 const config = loadConfig();
-const reminders = new LaunchdReminderScheduler();
+const reminders = createReminderScheduler();
 const server = createItfinServer({
   config,
   clock: systemClock,
-  tokenStore: new KeychainTokenStore("itfin-mcp", config.workspaceUrl),
+  tokenStore: createTokenStore("itfin-mcp", config.workspaceUrl),
   reminders,
 });
 

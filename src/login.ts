@@ -2,15 +2,40 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { createServer } from "node:net";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 
-const BROWSERS: Record<string, string> = {
+const MAC_BROWSERS: Record<string, string> = {
   chrome: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
   edge: "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
   brave: "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
   arc: "/Applications/Arc.app/Contents/MacOS/Arc",
   chromium: "/Applications/Chromium.app/Contents/MacOS/Chromium",
 };
+
+/** Linux browsers are commands on PATH; the first one found wins. */
+const LINUX_BROWSERS: Record<string, string[]> = {
+  chrome: ["google-chrome", "google-chrome-stable"],
+  edge: ["microsoft-edge", "microsoft-edge-stable"],
+  brave: ["brave-browser", "brave"],
+  chromium: ["chromium", "chromium-browser"],
+};
+
+const IS_MAC = process.platform === "darwin";
+
+function findOnPath(command: string): string | undefined {
+  return (process.env.PATH ?? "").split(delimiter).map((dir) => join(dir, command)).find((file) => existsSync(file));
+}
+
+function resolveBrowser(name: string): string {
+  if (IS_MAC) return MAC_BROWSERS[name.toLowerCase()] ?? name;
+  const commands = LINUX_BROWSERS[name.toLowerCase()];
+  return (commands && commands.map(findOnPath).find(Boolean)) || name;
+}
+
+function defaultProfileDir(): string {
+  if (IS_MAC) return join(homedir(), "Library", "Application Support", "itfin-mcp", "browser-profile");
+  return join(process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"), "itfin-mcp", "browser-profile");
+}
 
 const TOKEN_COOKIE = "itfin-jwt";
 
@@ -25,10 +50,10 @@ export interface LoginSession {
  * Nothing is clicked or typed: the user signs in themselves.
  */
 export async function startBrowserLogin(opts: { workspaceUrl: string; browser: string; profileDir?: string; maxWaitMs: number }): Promise<LoginSession> {
-  const executable = BROWSERS[opts.browser.toLowerCase()] ?? opts.browser;
-  if (!existsSync(executable)) throw new Error(`Browser not found: ${executable}. Set ITFIN_BROWSER to chrome, edge, brave, arc, chromium or a path.`);
+  const executable = resolveBrowser(opts.browser);
+  if (!existsSync(executable)) throw new Error(`Browser not found: ${executable}. Set ITFIN_BROWSER to ${IS_MAC ? "chrome, edge, brave, arc, chromium" : "chrome, edge, brave, chromium"} or a path.`);
 
-  const profileDir = opts.profileDir ?? join(homedir(), "Library", "Application Support", "itfin-mcp", "browser-profile");
+  const profileDir = opts.profileDir ?? defaultProfileDir();
   mkdirSync(profileDir, { recursive: true });
   const port = await freePort();
   const child = spawn(
